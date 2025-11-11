@@ -1,0 +1,262 @@
+"""
+API de Biometría Facial - Seguros Bolívar
+Flask application para generar URLs de biometría facial
+"""
+
+import os
+import json
+import time
+import random
+import string
+import requests
+from flask import Flask, request, jsonify
+from datetime import datetime
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+
+# Configuración de la API de Seguros Bolívar
+class SegurosBolivarAPI:
+    def __init__(self):
+        self.client_id = os.getenv('SEGUROS_CLIENT_ID', '7p2djtisjjsng91q8laktkmp36')
+        self.client_secret = os.getenv('SEGUROS_CLIENT_SECRET', '1ocv4ohfjqu69r7cukebhccbk51panhqdgfl31fu2og49d3hmk1s')
+        self.token_url = 'https://api-conecta.segurosbolivar.com/prod/oauth2/token'
+        self.biometric_url = 'https://api-conecta.segurosbolivar.com/prod/identidadDigital/biometria/facial/url'
+        self.access_token = None
+        self.token_expiry = None
+
+    def generar_id_transaccion(self):
+        """Genera un ID único para la transacción"""
+        timestamp = str(int(time.time()))
+        random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+        return f"{timestamp}{random_str}"
+
+    def obtener_token(self):
+        """Obtiene el token de acceso OAuth2"""
+        try:
+            payload = {
+                'grant_type': 'client_credentials',
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'scope': 'aws.cognito.signin.user.admin SrcServerCognitoConecta/ConectaApiScope'
+            }
+
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+
+            logger.info("Solicitando token OAuth2...")
+            response = requests.post(self.token_url, data=payload, headers=headers, timeout=30)
+
+            if response.status_code != 200:
+                logger.error(f"Error al obtener token: {response.status_code} - {response.text}")
+                return None
+
+            data = response.json()
+            self.access_token = data.get('access_token')
+            # Calcular expiración (por defecto 1 hora)
+            expires_in = data.get('expires_in', 3600)
+            self.token_expiry = time.time() + expires_in - 60  # 1 minuto de margen
+
+            logger.info("Token obtenido exitosamente")
+            return self.access_token
+
+        except Exception as e:
+            logger.error(f"Error en obtener_token: {str(e)}")
+            return None
+
+    def token_valido(self):
+        """Verifica si el token actual es válido"""
+        return (self.access_token is not None and
+                self.token_expiry is not None and
+                time.time() < self.token_expiry)
+
+    def consultar_biometria_facial(self, numero_documento, tipo_documento='CC', id_transaccion=None):
+        """Consulta la URL de biometría facial"""
+        try:
+            # Verificar/obtener token
+            if not self.token_valido():
+                if not self.obtener_token():
+                    return {
+                        'error': True,
+                        'message': 'No se pudo obtener el token de acceso'
+                    }
+
+            # Usar ID de transacción proporcionado o generar uno nuevo
+            transaction_id = id_transaccion or self.generar_id_transaccion()
+
+            # Preparar headers (valores fijos como en Apps Script)
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'X-Channel': 'SEGUROS_BOLIVAR',
+                'X-IPAddr': '186.82.101.105',
+                'X-Id_transaction': transaction_id,
+                'process': 'indem_patri',
+                'Content-Type': 'application/json'
+            }
+
+            # Preparar body
+            body_data = {
+                'userData': {
+                    'userId': str(numero_documento),
+                    'userType': tipo_documento
+                }
+            }
+
+            logger.info(f"Consultando biometría para documento: {numero_documento}")
+            logger.info(f"Headers: {headers}")
+            logger.info(f"Body: {json.dumps(body_data)}")
+
+            response = requests.post(
+                self.biometric_url,
+                json=body_data,
+                headers=headers,
+                timeout=30
+            )
+
+            logger.info(f"Status code: {response.status_code}")
+            logger.info(f"Response: {response.text}")
+
+            if response.status_code != 200:
+                return {
+                    'error': True,
+                    'message': f'API Error {response.status_code}: {response.text}',
+                    'status_code': response.status_code
+                }
+
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error de conexión: {str(e)}")
+            return {
+                'error': True,
+                'message': f'Error de conexión: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"Error en consultar_biometria_facial: {str(e)}")
+            return {
+                'error': True,
+                'message': f'Error interno: {str(e)}'
+            }
+
+
+# Instancia global de la API
+seguros_api = SegurosBolivarAPI()
+
+
+@app.route('/', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'Seguros Bolívar Biometric API',
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/biometria', methods=['POST'])
+def generar_url_biometria():
+    """Endpoint principal para generar URL de biometría facial"""
+    try:
+        # Obtener datos del request
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                'error': True,
+                'message': 'Body JSON requerido'
+            }), 400
+
+        # Solo estos 3 campos son requeridos del JSON
+        numero_documento = data.get('numeroDocumento')
+        tipo_documento = data.get('tipoDocumento', 'CC')
+        id_transaccion = data.get('idTransaccion')
+
+        if not numero_documento:
+            return jsonify({
+                'error': True,
+                'message': 'numeroDocumento es requerido'
+            }), 400
+
+        # Consultar API (IP fija, otros valores quemados)
+        resultado = seguros_api.consultar_biometria_facial(
+            numero_documento=numero_documento,
+            tipo_documento=tipo_documento,
+            id_transaccion=id_transaccion
+        )
+
+        if resultado.get('error'):
+            status_code = resultado.get('status_code', 500)
+            return jsonify(resultado), status_code
+
+        # Respuesta exitosa
+        return jsonify({
+            'success': True,
+            'data': resultado,
+            'input': {
+                'numeroDocumento': numero_documento,
+                'tipoDocumento': tipo_documento,
+                'idTransaccion': id_transaccion
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error en generar_url_biometria: {str(e)}")
+        return jsonify({
+            'error': True,
+            'message': f'Error interno del servidor: {str(e)}'
+        }), 500
+
+
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    """Endpoint de prueba con datos predeterminados"""
+    numero_documento = request.args.get('documento', '1007409364')
+    tipo_documento = request.args.get('tipo', 'CC')
+    id_transaccion = request.args.get('idTransaccion', '983223933nn111')
+
+    resultado = seguros_api.consultar_biometria_facial(
+        numero_documento=numero_documento,
+        tipo_documento=tipo_documento,
+        id_transaccion=id_transaccion
+    )
+
+    return jsonify({
+        'test': True,
+        'input': {
+            'numeroDocumento': numero_documento,
+            'tipoDocumento': tipo_documento,
+            'idTransaccion': id_transaccion
+        },
+        'resultado': resultado,
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/token/refresh', methods=['POST'])
+def refresh_token():
+    """Endpoint para forzar refresh del token"""
+    resultado = seguros_api.obtener_token()
+
+    if resultado:
+        return jsonify({
+            'success': True,
+            'message': 'Token renovado exitosamente',
+            'timestamp': datetime.now().isoformat()
+        })
+    else:
+        return jsonify({
+            'error': True,
+            'message': 'Error al renovar token'
+        }), 500
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)

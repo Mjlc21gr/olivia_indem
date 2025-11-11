@@ -1,0 +1,29 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/seguros-bolivar-biometric-api:$COMMIT_SHA', '.']
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/seguros-bolivar-biometric-api:$COMMIT_SHA']
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+    - 'run'
+    - 'deploy'
+    - 'seguros-bolivar-biometric-api'
+    - '--image=gcr.io/$PROJECT_ID/seguros-bolivar-biometric-api:$COMMIT_SHA'
+    - '--region=us-central1'
+    - '--platform=managed'
+    - '--allow-unauthenticated'
+    - '--port=8080'
+    - '--memory=512Mi'
+    - '--cpu=1'
+    - '--concurrency=80'
+    - '--max-instances=10'
+    - '--set-env-vars=PORT=8080'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
