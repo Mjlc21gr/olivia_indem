@@ -163,13 +163,52 @@ def health_check():
 def generar_url_biometria():
     """Endpoint principal para generar URL de biometría facial"""
     try:
-        # Obtener datos del request
-        data = request.get_json()
+        # Log request para debugging
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request content type: {request.content_type}")
+        logger.info(f"Request data: {request.data}")
+
+        # Intentar obtener datos del request de múltiples formas
+        data = None
+
+        # Método 1: JSON estándar
+        try:
+            data = request.get_json(force=True)
+            logger.info(f"JSON data (method 1): {data}")
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON with method 1: {e}")
+
+        # Método 2: Si falla, intentar parsear manualmente
+        if not data:
+            try:
+                raw_data = request.get_data(as_text=True)
+                logger.info(f"Raw data: {raw_data}")
+                if raw_data:
+                    data = json.loads(raw_data)
+                    logger.info(f"JSON data (method 2): {data}")
+            except Exception as e:
+                logger.warning(f"Failed to parse JSON with method 2: {e}")
+
+        # Método 3: Intentar desde form data
+        if not data and request.form:
+            try:
+                data = request.form.to_dict()
+                logger.info(f"Form data (method 3): {data}")
+            except Exception as e:
+                logger.warning(f"Failed to parse form data: {e}")
 
         if not data:
+            logger.error("No se pudo obtener datos del request")
             return jsonify({
                 'error': True,
-                'message': 'Body JSON requerido'
+                'message': 'Body JSON requerido',
+                'debug': {
+                    'content_type': request.content_type,
+                    'method': request.method,
+                    'headers': dict(request.headers),
+                    'raw_data': request.get_data(as_text=True)[:500]  # Primeros 500 chars
+                }
             }), 400
 
         # Solo estos 3 campos son requeridos del JSON
