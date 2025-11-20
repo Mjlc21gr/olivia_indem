@@ -242,15 +242,13 @@ def generar_url_biometria():
         # Log de la respuesta procesada para debug
         logger.info(f"Respuesta procesada de Seguros Bolívar: {json.dumps(resultado)}")
 
-        # Respuesta exitosa
+        # Respuesta exitosa con estructura plana
         return jsonify({
+            'url': resultado.get('url', ''),
+            'idTransaccion': id_transaccion,
+            'numeroDocumento': numero_documento,
+            'tipoDocumento': tipo_documento,
             'success': True,
-            'data': resultado,
-            'input': {
-                'numeroDocumento': numero_documento,
-                'tipoDocumento': tipo_documento,
-                'idTransaccion': id_transaccion
-            },
             'timestamp': datetime.now().isoformat()
         })
 
