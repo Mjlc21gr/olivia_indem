@@ -1,6 +1,6 @@
 """
 API de Biometría Facial - Seguros Bolívar
-Flask application para generar URLs de biometría facial
+Flask application para generar URLs de biometría facial y convertir audio a base64
 """
 
 import os
@@ -293,6 +293,155 @@ def refresh_token():
         return jsonify({
             'error': True,
             'message': 'Error al renovar token'
+        }), 500
+
+
+@app.route('/audio_base64', methods=['POST'])
+def convertir_audio_base64():
+    """Endpoint para convertir audio URL a base64 usando Google Apps Script"""
+    try:
+        # Log request para debugging
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request content type: {request.content_type}")
+        logger.info(f"Request data: {request.data}")
+
+        # Obtener datos del request (usando la misma lógica robusta del endpoint biometria)
+        data = None
+
+        # Método 1: JSON estándar
+        try:
+            data = request.get_json(force=True)
+            logger.info(f"JSON data (method 1): {data}")
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON with method 1: {e}")
+
+        # Método 2: Si falla, intentar parsear manualmente
+        if not data:
+            try:
+                raw_data = request.get_data(as_text=True)
+                logger.info(f"Raw data: {raw_data}")
+                if raw_data:
+                    data = json.loads(raw_data)
+                    logger.info(f"JSON data (method 2): {data}")
+            except Exception as e:
+                logger.warning(f"Failed to parse JSON with method 2: {e}")
+
+        # Método 3: Intentar desde form data
+        if not data and request.form:
+            try:
+                data = request.form.to_dict()
+                logger.info(f"Form data (method 3): {data}")
+            except Exception as e:
+                logger.warning(f"Failed to parse form data: {e}")
+
+        if not data:
+            logger.error("No se pudo obtener datos del request")
+            return jsonify({
+                'error': True,
+                'message': 'Body JSON requerido',
+                'debug': {
+                    'content_type': request.content_type,
+                    'method': request.method,
+                    'headers': dict(request.headers),
+                    'raw_data': request.get_data(as_text=True)[:500]
+                }
+            }), 400
+
+        # Validar campos requeridos
+        audio_url = data.get('audio_url')
+        id_session = data.get('id_session')
+        auth_token = data.get('auth_token')
+
+        if not audio_url:
+            return jsonify({
+                'error': True,
+                'message': 'audio_url es requerido'
+            }), 400
+
+        if not id_session:
+            return jsonify({
+                'error': True,
+                'message': 'id_session es requerido'
+            }), 400
+
+        if not auth_token:
+            return jsonify({
+                'error': True,
+                'message': 'auth_token es requerido'
+            }), 400
+
+        # URL del Google Apps Script
+        apps_script_url = 'https://script.google.com/macros/s/AKfycbx4Vho2TiRvTDdCZoKeLVzxXjGfigyf74YqwbLnHkQdXpn-4JHqhqu8lIpZIgzXoA3svQ/exec'
+
+        # Preparar payload para Apps Script
+        payload = {
+            'audio_url': audio_url,
+            'id_session': id_session,
+            'auth_token': auth_token
+        }
+
+        # Headers para la petición
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        logger.info(f"Enviando petición a Apps Script: {apps_script_url}")
+        logger.info(f"Payload: {json.dumps(payload)}")
+
+        # Hacer petición al Google Apps Script
+        response = requests.post(
+            apps_script_url,
+            json=payload,
+            headers=headers,
+            timeout=60  # Timeout más largo para procesamiento de audio
+        )
+
+        logger.info(f"Apps Script response status: {response.status_code}")
+        logger.info(f"Apps Script response: {response.text}")
+
+        if response.status_code != 200:
+            return jsonify({
+                'error': True,
+                'message': f'Error en Google Apps Script: {response.status_code}',
+                'details': response.text,
+                'input': {
+                    'audio_url': audio_url,
+                    'id_session': id_session,
+                    'auth_token': auth_token
+                }
+            }), 500
+
+        # Parsear respuesta del Apps Script
+        try:
+            apps_script_response = response.json()
+        except Exception as e:
+            logger.error(f"Error parsing Apps Script response: {e}")
+            return jsonify({
+                'error': True,
+                'message': 'Error parsing response from Google Apps Script',
+                'raw_response': response.text,
+                'input': {
+                    'audio_url': audio_url,
+                    'id_session': id_session,
+                    'auth_token': auth_token
+                }
+            }), 500
+
+        # Retornar la respuesta del Apps Script tal como viene
+        return jsonify(apps_script_response)
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error de conexión con Google Apps Script: {str(e)}")
+        return jsonify({
+            'error': True,
+            'message': f'Error de conexión con Google Apps Script: {str(e)}'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error en convertir_audio_base64: {str(e)}")
+        return jsonify({
+            'error': True,
+            'message': f'Error interno del servidor: {str(e)}'
         }), 500
 
 
