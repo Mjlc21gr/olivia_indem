@@ -233,6 +233,14 @@ def generar_url_biometria():
             status_code = resultado.get('status_code', 500)
             return jsonify(resultado), status_code
 
+        # Procesar la respuesta para modificar la URL
+        if resultado.get('data') and resultado['data'].get('url'):
+            # Remover https:// de la URL
+            original_url = resultado['data']['url']
+            if original_url.startswith('https://'):
+                resultado['data']['url'] = original_url.replace('https://', '')
+                logger.info(f"URL procesada: {original_url} -> {resultado['data']['url']}")
+
         # Respuesta exitosa
         return jsonify({
             'success': True,
@@ -348,10 +356,9 @@ def convertir_audio_base64():
                 }
             }), 400
 
-        # Validar campos requeridos
+        # Validar campos requeridos (solo audio_url e id_session)
         audio_url = data.get('audio_url')
         id_session = data.get('id_session')
-        auth_token = data.get('auth_token')
 
         if not audio_url:
             return jsonify({
@@ -365,16 +372,13 @@ def convertir_audio_base64():
                 'message': 'id_session es requerido'
             }), 400
 
-        if not auth_token:
-            return jsonify({
-                'error': True,
-                'message': 'auth_token es requerido'
-            }), 400
+        # Auth token fijo (configurado internamente)
+        auth_token = "4ea2df623fed2f34af5b27c258f47581-e418b99d-1476-4103-a128-a5a7b8e28778"
 
         # URL del Google Apps Script
         apps_script_url = 'https://script.google.com/macros/s/AKfycbx4Vho2TiRvTDdCZoKeLVzxXjGfigyf74YqwbLnHkQdXpn-4JHqhqu8lIpZIgzXoA3svQ/exec'
 
-        # Preparar payload para Apps Script
+        # Preparar payload para Apps Script (incluyendo auth_token fijo)
         payload = {
             'audio_url': audio_url,
             'id_session': id_session,
@@ -407,8 +411,7 @@ def convertir_audio_base64():
                 'details': response.text,
                 'input': {
                     'audio_url': audio_url,
-                    'id_session': id_session,
-                    'auth_token': auth_token
+                    'id_session': id_session
                 }
             }), 500
 
@@ -423,8 +426,7 @@ def convertir_audio_base64():
                 'raw_response': response.text,
                 'input': {
                     'audio_url': audio_url,
-                    'id_session': id_session,
-                    'auth_token': auth_token
+                    'id_session': id_session
                 }
             }), 500
 
