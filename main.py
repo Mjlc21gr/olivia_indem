@@ -233,13 +233,14 @@ def generar_url_biometria():
             status_code = resultado.get('status_code', 500)
             return jsonify(resultado), status_code
 
-        # Procesar la respuesta para modificar la URL
-        if resultado.get('data') and resultado['data'].get('url'):
-            # Remover https:// de la URL
-            original_url = resultado['data']['url']
-            if original_url.startswith('https://'):
-                resultado['data']['url'] = original_url.replace('https://', '')
-                logger.info(f"URL procesada: {original_url} -> {resultado['data']['url']}")
+        # Procesar la URL de la respuesta original de Seguros Bolívar
+        if resultado.get('url') and resultado['url'].startswith('https://'):
+            original_url = resultado['url']
+            resultado['url'] = original_url.replace('https://', '')
+            logger.info(f"URL procesada: {original_url} -> {resultado['url']}")
+
+        # Log de la respuesta procesada para debug
+        logger.info(f"Respuesta procesada de Seguros Bolívar: {json.dumps(resultado)}")
 
         # Respuesta exitosa
         return jsonify({
