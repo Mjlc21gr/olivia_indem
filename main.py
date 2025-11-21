@@ -372,7 +372,9 @@ def convertir_audio_base64():
             }), 400
 
         # Auth token fijo (configurado internamente)
-        auth_token = "ac4a666571ebf85116a87237ba05bfa4-7b59d052-ca59-4f4b-a324-faf1643f56aa"
+        auth_token = "4ea2df623fed2f34af5b27c258f47581-e418b99d-1476-4103-a128-a5a7b8e28778"
+        # 4ea2df623fed2f34af5b27c258f47581-e418b99d-1476-4103-a128-a5a7b8e28778 Dev
+        # ac4a666571ebf85116a87237ba05bfa4-7b59d052-ca59-4f4b-a324-faf1643f56aa Prod
 
         # URL del Google Apps Script
         apps_script_url = 'https://script.google.com/macros/s/AKfycbx4Vho2TiRvTDdCZoKeLVzxXjGfigyf74YqwbLnHkQdXpn-4JHqhqu8lIpZIgzXoA3svQ/exec'
